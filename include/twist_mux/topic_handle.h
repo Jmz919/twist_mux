@@ -223,7 +223,6 @@ namespace twist_mux
 
       protected:
         ros::NodeHandle nh_;
-
         std::string name_;
         std::string topic_;
         ros::Subscriber subscriber_;
@@ -349,7 +348,6 @@ protected:
   TwistMux* mux_;
   ros::Time stamp_;
   geometry_msgs::Twist twist_;
-  // T msg_;
   geometry_msgs::TwistStamped ts;
 };
 
@@ -393,17 +391,17 @@ public:
     // and since we have several topics we must look for the highest one in
     // all the topic list; so far there's no O(1) solution.
 
-    //check the publisher type and to determine the publish
+    //check the publisher type to determine how to publish
 
     if (mux_->hasPriority(*this))
     {
-      mux_->publishTwist(msg);
+      mux_->publishTwist(twist_);
     }
 
-    // if (mux_->hasPriority(*this))
-    // {
-    //   mux_->publishTwistStamped(msg);
-    // }
+    if (mux_->hasPriority(*this))
+    {
+      mux_->publishTwistStamped(ts);
+    }
   }
 };
 
@@ -437,30 +435,27 @@ public:
   }
   void callback(const geometry_msgs::TwistStampedConstPtr& msg)
   {
-    ts   = *msg;
+    ts     = *msg;
     twist_ = ts.twist;
     stamp_ = ts.header.stamp;
-
-    // geometry_msgs::TwistConstPtr * twist;
-
-    // twist = &twist_;
 
     // Check if this twist has priority.
     // Note that we have to check all the locks because they might time out
     // and since we have several topics we must look for the highest one in
     // all the topic list; so far there's no O(1) solution.
 
-    //check the publisher type and to determine the publish
-
-    // if (mux_->hasPriority(*this))
-    // {
-    //   mux_->publishTwist(twist);
-    // }
+    //check the publisher type and to determine how to publish
+    
+    if (mux_->hasPriority(*this))
+    {
+      mux_->publishTwist(twist_);
+    }
 
     if (mux_->hasPriority(*this))
     {
-      mux_->publishTwistStamped(msg);
+      mux_->publishTwistStamped(ts);
     }
+
   }
 };
 

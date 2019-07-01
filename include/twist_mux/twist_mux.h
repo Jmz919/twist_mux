@@ -73,15 +73,15 @@ public:
 
   // bool hasPriorityStamp(const VelocityTopicStampHandle& twist);
 
-  void publishTwist(const geometry_msgs::TwistConstPtr& msg);
+  void publishTwist(const geometry_msgs::Twist& msg);
 
-  void publishTwistStamped(const geometry_msgs::TwistStampedConstPtr& msg);
+  void publishTwistStamped(const geometry_msgs::TwistStamped& msg);
 
   // void publishTwistStamped(const geometry_msgs::TwistConstPtr& msg);
 
   void updateDiagnostics(const ros::TimerEvent& event);
 
-  void getPublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name);
+  void getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
 
 
 protected:
@@ -92,6 +92,8 @@ protected:
   ros::Timer diagnostics_timer_;
 
   static constexpr double DIAGNOSTICS_PERIOD = 1.0;
+
+  int pub_msg;
 
   /**
    * @brief velocity_hs_ Velocity topics' handles.
@@ -105,6 +107,7 @@ protected:
   boost::shared_ptr<lock_topic_container>     lock_hs_;
 
   ros::Publisher cmd_pub_;
+  ros::Publisher cmd_pub_stamped_;
 
   geometry_msgs::Twist last_cmd_;
   geometry_msgs::TwistStamped last_stamp_cmd_;

@@ -58,23 +58,15 @@ TwistMux::TwistMux(int window_size)
   ros::NodeHandle nh;
   ros::NodeHandle nh_priv("~");
 
+  //Containers for the topics and locks
   velocity_hs_ = boost::make_shared<velocity_topic_container>();
   lock_hs_     = boost::make_shared<lock_topic_container>();
-  //Containers for the topics and locks
 
-  getTopicHandles(nh, nh_priv);//, "topics", *velocity_hs_);
-  //getTopicHandles(nh, nh_priv, "locks" , *lock_hs_ );
   //Gets the topics and locks
+  getTopicHandles(nh, nh_priv);
 
-  // Publisher for output topic:
-  std::string pub_msg = getPublisher(nh, nh_priv, "publisher");
-
-  if(pub_msg == "twist") {
-    cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
-  }
-  else {
-    cmd_pub_ = nh.advertise<geometry_msgs::TwistStamped>("cmd_vel_out", 1);
-  }
+  //Gets the Publishers for output topics:
+  getPublishers(nh, nh_priv);
 
   /// Diagnostics:
   diagnostics_ = boost::make_shared<diagnostics_type>();
@@ -94,14 +86,20 @@ void TwistMux::updateDiagnostics(const ros::TimerEvent& event)
   diagnostics_->updateStatus(status_);
 }
 
-void TwistMux::publishTwist(const geometry_msgs::TwistConstPtr& msg)
+void TwistMux::publishTwist(const geometry_msgs::Twist& msg)
 {
-  cmd_pub_.publish(*msg);
+  if (cmd_pub_) {
+    cmd_pub_.publish(msg);
+  }
+  // cmd_pub_twist_.publish(msg);
 }
 
-void TwistMux::publishTwistStamped(const geometry_msgs::TwistStampedConstPtr& msg)
+void TwistMux::publishTwistStamped(const geometry_msgs::TwistStamped& msg)
 {
-  cmd_pub_.publish(*msg);
+  if (cmd_pub_stamped_) {
+    cmd_pub_stamped_.publish(msg);
+  }
+  // cmd_pub_twist_stamped_.publish(msg);
 }
 
 void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//, const std::string& param_name)//, velocity_topic_container& topic_hs)
@@ -118,6 +116,7 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
     double timeout;
     int msg_type;
     int priority;
+    nh.param<int>("msg_type", msg_type, 0);
 
     //if(param_name=="topics") {
       for (int i = 0; i < output.size(); i++)
@@ -128,21 +127,18 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
         xh::getStructMember(output_i, "topic"   , topic   );
         xh::getStructMember(output_i, "timeout" , timeout );
         xh::getStructMember(output_i, "priority", priority);
-        xh::getStructMember(output_i, "msg_type", msg_type);
-        //reads the data from the yaml file to get the topics
-        //problem without having a msg_type labeled in the yaml
+        if(msg_type) {
+          xh::getStructMember(output_i, "msg_type", msg_type);
+        }
+        else {
+          msg_type = 0;
+        }
 
         if(msg_type == 1) {
-          //create a VelocityTopicStampHandle
-          //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicStampHandle
-
           boost::shared_ptr<VelocityTopicStampHandle> twistStamped = boost::make_shared<VelocityTopicStampHandle>(nh, name, topic, timeout, priority, this, msg_type);
           velocity_hs_->push_back(twistStamped);
         }
         else {
-          //create a VelocityTopicHandle
-          //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicHandle
-
           boost::shared_ptr<VelocityTopicHandle> twist = boost::make_shared<VelocityTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
           velocity_hs_->push_back(twist);
         }
@@ -155,11 +151,9 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
 
     try {
       xh::Array output;
-
       xh::Struct output_i;
       std::string name, topic;
       double timeout;
-      int msg_type;
       int priority;
 
       std::string param_name = "locks";
@@ -173,13 +167,10 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
         xh::getStructMember(output_i, "topic"   , topic   );
         xh::getStructMember(output_i, "timeout" , timeout );
         xh::getStructMember(output_i, "priority", priority);
-        //reads the data from the yaml file to get the topics
-        //problem without having a msg_type labeled in the yaml
+
         boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
         lock_hs_->push_back(lock);
-        // adds the topics onto the vector or list
       }
-    //}
   }
   catch (const xh::XmlrpcHelperException& e)
   {
@@ -187,15 +178,43 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
   }
 }
 
-void TwistMux::getPublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name)
+void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
 {
   try
   {
+    xh::Array output;
+    xh::Struct output_i;
+    std::string topic;
+    int msg_type;
+    std::string param_name = "publishers";
 
+    xh::fetchParam(nh_priv, param_name, output);
+
+    for (int i = 0; i < 2; i++)
+    {
+      xh::getArrayItem(output, i, output_i);
+
+      xh::getStructMember(output_i, "topic", topic);
+      xh::getStructMember(output_i, "msg_type", msg_type);
+
+      if(topic.length() != 0) {
+        if(msg_type == 1) {
+          cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
+        }
+        else {
+          cmd_pub_ = nh.advertise<geometry_msgs::Twist>(topic, 1);
+        }
+      }
+    }
   }
   catch (const xh::XmlrpcHelperException& e)
   {
-    ROS_FATAL_STREAM("Error parsing params: " << e.what());
+    cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
+    // cmd_pub_twist_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twistStamped", 1);
+    //In case there is a problem parsing or old file
+    //There are default publishers
+
+    ROS_WARN_STREAM("Error parsing publishers defaulting to Twist: " << e.what());
   }
 }
 
