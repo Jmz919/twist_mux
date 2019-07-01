@@ -19,6 +19,11 @@
  * @author Siegfried Gevatter
  */
 
+#include <ros/ros.h>
+#include <fstream>
+#include <pluginlib/class_list_macros.h>
+#include <std_msgs/String.h>
+
 #include <twist_mux/twist_mux.h>
 #include <twist_mux/topic_handle.h>
 #include <twist_mux/twist_mux_diagnostics.h>
@@ -53,14 +58,18 @@ TwistMux::TwistMux(int window_size)
   ros::NodeHandle nh;
   ros::NodeHandle nh_priv("~");
 
-  /// Get topics and locks:
   velocity_hs_ = boost::make_shared<velocity_topic_container>();
   lock_hs_     = boost::make_shared<lock_topic_container>();
+  //Containers for the topics and locks
+
   getTopicHandles(nh, nh_priv, "topics", *velocity_hs_);
   getTopicHandles(nh, nh_priv, "locks" , *lock_hs_ );
+  //Gets the topics and locks
 
-  /// Publisher for output topic:
+  // Publisher for output topic:
+  getPublisher(nh, nh_priv, "publisher");
   cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
+  cmd_pub_ = nh.advertise<geometry_msgs::TwistStamped>("cmd_vel_out", 1);
 
   /// Diagnostics:
   diagnostics_ = boost::make_shared<diagnostics_type>();
@@ -85,6 +94,11 @@ void TwistMux::publishTwist(const geometry_msgs::TwistConstPtr& msg)
   cmd_pub_.publish(*msg);
 }
 
+void TwistMux::publishTwistStamped(const geometry_msgs::TwistConstPtr& msg)
+{
+  cmd_pub_.publish(*msg);
+}
+
 template<typename T>
 void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name, std::list<T>& topic_hs)
 {
@@ -96,18 +110,66 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, co
     xh::Struct output_i;
     std::string name, topic;
     double timeout;
+    int msg_type;
     int priority;
-    for (int i = 0; i < output.size(); ++i)
-    {
-      xh::getArrayItem(output, i, output_i);
 
-      xh::getStructMember(output_i, "name"    , name    );
-      xh::getStructMember(output_i, "topic"   , topic   );
-      xh::getStructMember(output_i, "timeout" , timeout );
-      xh::getStructMember(output_i, "priority", priority);
+    if(param_name=="topics") {
+      for (int i = 0; i < output.size(); i++)
+      {
+        xh::getArrayItem(output, i, output_i);
 
-      topic_hs.emplace_back(nh, name, topic, timeout, priority, this);
+        xh::getStructMember(output_i, "name"    , name    );
+        xh::getStructMember(output_i, "topic"   , topic   );
+        xh::getStructMember(output_i, "timeout" , timeout );
+        xh::getStructMember(output_i, "priority", priority);
+        xh::getStructMember(output_i, "msg_type", msg_type);
+        //reads the data from the yaml file to get the topics
+        //problem without having a msg_type labeled in the yaml
+
+        if(msg_type == 1) {
+          //create a VelocityTopicStampHandle
+          //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicStampHandle
+
+          VelocityTopicStampHandle twistStamped(nh, name, topic, timeout, priority, this, msg_type);
+          topic_hs.push_back(twistStamped);
+        }
+        else {
+          //create a VelocityTopicHandle
+          //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicHandle
+
+          VelocityTopicHandle twist(nh, name, topic, timeout, priority, this, msg_type);
+          topic_hs.push_back(twist);
+        }
+      }
     }
+    else {
+      for (int i = 0; i < output.size(); i++)
+      {
+        xh::getArrayItem(output, i, output_i);
+
+        xh::getStructMember(output_i, "name"    , name    );
+        xh::getStructMember(output_i, "topic"   , topic   );
+        xh::getStructMember(output_i, "timeout" , timeout );
+        xh::getStructMember(output_i, "priority", priority);
+        //reads the data from the yaml file to get the topics
+        //problem without having a msg_type labeled in the yaml
+
+        topic_hs.emplace_back(nh, name, topic, timeout, priority, this);
+        // adds the topics onto the vector or list
+      }
+    }
+  }
+  catch (const xh::XmlrpcHelperException& e)
+  {
+    ROS_FATAL_STREAM("Error parsing params: " << e.what());
+  }
+}
+
+void TwistMux::getPublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name)
+{
+  try
+  {
+
   }
   catch (const xh::XmlrpcHelperException& e)
   {
@@ -138,7 +200,7 @@ int TwistMux::getLockPriority()
   return priority;
 }
 
-bool TwistMux::hasPriority(const VelocityTopicHandle& twist)
+bool TwistMux::hasPriority(const TopicsHandleBase& twist)
 {
   const auto lock_priority = getLockPriority();
 
@@ -162,5 +224,4 @@ bool TwistMux::hasPriority(const VelocityTopicHandle& twist)
 
   return twist.getName() == velocity_name;
 }
-
 } // namespace twist_mux

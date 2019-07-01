@@ -22,9 +22,14 @@
 #ifndef TWIST_MUX_H
 #define TWIST_MUX_H
 
+#include <fstream>
+#include <pluginlib/class_list_macros.h>
+#include <std_msgs/String.h>
+
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 
 #include <list>
 
@@ -34,7 +39,10 @@ namespace twist_mux
 // Forwarding declarations:
 class TwistMuxDiagnostics;
 struct TwistMuxDiagnosticsStatus;
+class TopicsHandleBase;
+class TopicsHandle;
 class VelocityTopicHandle;
+class VelocityTopicStampHandle;
 class LockTopicHandle;
 
 /**
@@ -49,17 +57,32 @@ public:
   //template<typename T>
   //using handle_container = std::list<T>;
   // @todo alternatively we do the following:
-  typedef std::list<VelocityTopicHandle> velocity_topic_container;
-  typedef std::list<LockTopicHandle>     lock_topic_container;
+  // typedef std::list<VelocityTopicHandle>      velocity_topic_container;
+  // typedef std::list<TopicsHandleBase>         velocity_topic_container;
+  // typedef std::list<LockTopicHandle>          lock_topic_container;
+
+  typedef std::list<TopicsHandleBase>         velocity_topic_container;
+  typedef std::list<LockTopicHandle>          lock_topic_container;
 
   TwistMux(int window_size = 10);
   ~TwistMux();
 
-  bool hasPriority(const VelocityTopicHandle& twist);
+  bool hasPriority(const TopicsHandleBase& twist);
+
+  // bool hasPriority(const VelocityTopicHandle& twist);
+
+  // bool hasPriorityStamp(const VelocityTopicStampHandle& twist);
 
   void publishTwist(const geometry_msgs::TwistConstPtr& msg);
 
+  // void publishTwistStamped(const geometry_msgs::TwistConstPtr& msg);
+
   void updateDiagnostics(const ros::TimerEvent& event);
+
+  void getPublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name);
+
+  // virtual void getTwist() = 0;
+  // virtual void getTime() = 0;
 
 protected:
 
@@ -78,13 +101,20 @@ protected:
    */
   // @todo use handle_container (see above)
   //handle_container<VelocityTopicHandle> velocity_hs_;
-  //handle_container<LockTopicHandle> lock_hs_;
+
+  // handle_container<TopicsHandleBase> velocity_hs_;
+  // handle_container<LockTopicHandle> lock_hs_;
+
+  // velocity_topic_container velocity_hs_;
+  // lock_topic_container lock_hs_;
+
   boost::shared_ptr<velocity_topic_container> velocity_hs_;
   boost::shared_ptr<lock_topic_container>     lock_hs_;
 
   ros::Publisher cmd_pub_;
 
   geometry_msgs::Twist last_cmd_;
+  geometry_msgs::TwistStamped last_stamp_cmd_;
 
   template<typename T>
   void getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name, std::list<T>& topic_hs);
