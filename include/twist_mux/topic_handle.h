@@ -54,28 +54,29 @@ namespace twist_mux
        * expired
        * @param priority Priority of the topic
        */
-      TopicsHandleBase(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type=0)
-        : nh_(nh)
-        , name_(name)
-        , topic_(topic)
-        , timeout_(timeout)
-        , priority_(clamp(priority, priority_type(0), priority_type(255)))
-        , mux_(mux)
-        , msg_type_(msg_type)
-        , stamp_(0.0)
-
-        {
-          ROS_INFO_STREAM
-          (
-            "Topic handler '" << name_ << "' subscribed to topic '" << topic_ <<
-            "': timeout = " << ((timeout_) ? std::to_string(timeout_) + "s" : "None") <<
-            ", priority = " << static_cast<int>(priority_) << "msg_type = " << static_cast<int>(msg_type_)
-            //if successful reports that the node subscribe to the topic
-          );
-        }
+      // TopicsHandleBase(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type)
+      //   : nh_(nh)
+      //   , name_(name)
+      //   , topic_(topic)
+      //   , timeout_(timeout)
+      //   , priority_(clamp(priority, priority_type(0), priority_type(255)))
+      //   , mux_(mux)
+      //   , msg_type_(msg_type)
+      //   , stamp_(0.0)
+      //
+      //   {
+      //     ROS_INFO_STREAM
+      //     (
+      //       "Topic handler '" << name_ << "' subscribed to topic '" << topic_ <<
+      //       "': timeout = " << ((timeout_) ? std::to_string(timeout_) + "s" : "None") <<
+      //       ", priority = " << static_cast<int>(priority_) << "msg_type = " << static_cast<int>(msg_type_)
+      //       //if successful reports that the node subscribe to the topic
+      //     );
+      //   }
 
         virtual geometry_msgs::Twist getTwist() = 0;
         virtual ros::Time& getTime() = 0;
+        virtual bool isMasked(priority_type lock_priority) const = 0;
 
         virtual ~TopicsHandleBase()
         {
@@ -120,7 +121,6 @@ namespace twist_mux
 
       protected:
         ros::NodeHandle nh_;
-
         std::string name_;
         std::string topic_;
         ros::Subscriber subscriber_;
@@ -138,13 +138,14 @@ namespace twist_mux
       public:
         typedef int priority_type;
         // typedef typename base_type::priority_type priority_type;
-        LockTopicHandle(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux)
+        LockTopicHandle(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type=0)
           : nh_(nh)
           , name_(name)
           , topic_(topic)
           , timeout_(timeout)
           , priority_(clamp(priority, priority_type(0), priority_type(255)))
           , mux_(mux)
+          , msg_type_(msg_type)
           , stamp_(0.0)
           //holds the names of the topics and other data
         {
@@ -239,7 +240,7 @@ namespace twist_mux
 
 
 template<typename T>
-class TopicHandle_ : TopicsHandleBase, boost::noncopyable
+class TopicHandle_ : public TopicsHandleBase, boost::noncopyable
 {
 public:
 
@@ -329,10 +330,10 @@ public:
     return stamp_;
   }
 
-  const T& getMessage() const
-  {
-    return msg_;
-  }
+  // const T& getMessage() const
+  // {
+  //   return msg_;
+  // }
 
 protected:
   ros::NodeHandle nh_;
@@ -347,7 +348,8 @@ protected:
 protected:
   TwistMux* mux_;
   ros::Time stamp_;
-  T msg_;
+  geometry_msgs::Twist twist_;
+  // T msg_;
   geometry_msgs::TwistStamped ts;
 };
 
@@ -365,6 +367,14 @@ public:
     subscriber_ = nh_.subscribe(topic_, 1, &VelocityTopicHandle::callback, this);
   }
 
+  geometry_msgs::Twist getTwist() {
+    return ts.twist;
+  }
+
+  ros::Time& getTime() {
+    return ts.header.stamp;
+  }
+
   bool isMasked(priority_type lock_priority) const
   {
     return hasExpired() or (getPriority() < lock_priority);
@@ -373,7 +383,7 @@ public:
   void callback(const geometry_msgs::TwistConstPtr& msg)
   {
     stamp_ = ros::Time::now();
-    msg_   = *msg;
+    twist_ = *msg;
 
     ts.twist = *msg;
     ts.header.stamp = ros::Time::now();
@@ -382,18 +392,18 @@ public:
     // Note that we have to check all the locks because they might time out
     // and since we have several topics we must look for the highest one in
     // all the topic list; so far there's no O(1) solution.
+
+    //check the publisher type and to determine the publish
+
     if (mux_->hasPriority(*this))
     {
       mux_->publishTwist(msg);
     }
-  }
 
-  geometry_msgs::Twist getTwist() {
-    return ts.twist;
-  }
-
-  ros::Time& getTime() {
-    return ts.header.stamp;
+    // if (mux_->hasPriority(*this))
+    // {
+    //   mux_->publishTwistStamped(msg);
+    // }
   }
 };
 
@@ -413,27 +423,6 @@ public:
     subscriber_ = nh_.subscribe(topic_, 1, &VelocityTopicStampHandle::callback, this);
   }
 
-  bool isMasked(priority_type lock_priority) const
-  {
-    return hasExpired() or (getPriority() < lock_priority);
-  }
-
-  void callback(const geometry_msgs::TwistStampedConstPtr& msg)
-  {
-    ts   = *msg;
-    msg_ = ts.twist;
-    stamp_ = ts.header.stamp;
-
-    // Check if this twist has priority.
-    // Note that we have to check all the locks because they might time out
-    // and since we have several topics we must look for the highest one in
-    // all the topic list; so far there's no O(1) solution.
-    if (mux_->hasPriorityStamp(*this))
-    {
-      mux_->publishTwist(msg);
-    }
-  }
-
   geometry_msgs::Twist getTwist() {
     return ts.twist;
   }
@@ -441,61 +430,39 @@ public:
   ros::Time& getTime() {
     return ts.header.stamp;
   }
+
+  bool isMasked(priority_type lock_priority) const
+  {
+    return hasExpired() or (getPriority() < lock_priority);
+  }
+  void callback(const geometry_msgs::TwistStampedConstPtr& msg)
+  {
+    ts   = *msg;
+    twist_ = ts.twist;
+    stamp_ = ts.header.stamp;
+
+    // geometry_msgs::TwistConstPtr * twist;
+
+    // twist = &twist_;
+
+    // Check if this twist has priority.
+    // Note that we have to check all the locks because they might time out
+    // and since we have several topics we must look for the highest one in
+    // all the topic list; so far there's no O(1) solution.
+
+    //check the publisher type and to determine the publish
+
+    // if (mux_->hasPriority(*this))
+    // {
+    //   mux_->publishTwist(twist);
+    // }
+
+    if (mux_->hasPriority(*this))
+    {
+      mux_->publishTwistStamped(msg);
+    }
+  }
 };
-
-
-// class LockTopicHandle : public TopicHandle_<std_msgs::Bool>
-// class LockTopicHandle
-// {
-// // private:
-// //   typedef TopicHandle_<std_msgs::Bool> base_type;
-//
-// public:
-//
-//   LockTopicHandle(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux)
-//     : nh_(nh)
-//     , name_(name)
-//     , topic_(topic)
-//     , timeout_(timeout)
-//     , priority_(clamp(priority, priority_type(0), priority_type(255)))
-//     , mux_(mux)
-//     , stamp_(0.0)
-//     //holds the names of the topics and other data
-//
-//     subscriber_ = nh_.subscribe(topic_, 1, &LockTopicHandle::callback, this);
-//   {
-//     ROS_INFO_STREAM
-//     (
-//       "Topic handler '" << name_ << "' subscribed to topic '" << topic_ <<
-//       "': timeout = " << ((timeout_) ? std::to_string(timeout_) + "s" : "None") <<
-//       ", priority = " << static_cast<int>(priority_)
-//       //if successful reports that the node subscribe to the topic
-//     );
-//   }
-//
-//   // typedef typename base_type::priority_type priority_type;
-//   //
-//   // LockTopicHandle(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type=0)
-//   //   : base_type(nh, name, topic, timeout, priority, mux, msg_type)
-//   // {
-//   //   subscriber_ = nh_.subscribe(topic_, 1, &LockTopicHandle::callback, this);
-//   // }
-//
-//   /**
-//    * @brief isLocked
-//    * @return true if has expired or locked (i.e. bool message data is true)
-//    */
-//   bool isLocked() const
-//   {
-//     return hasExpired() or getMessage().data;
-//   }
-//
-//   void callback(const std_msgs::BoolConstPtr& msg)
-//   {
-//     stamp_ = ros::Time::now();
-//     msg_   = *msg;
-//   }
-// };
 
 } // namespace twist_mux
 

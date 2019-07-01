@@ -62,14 +62,19 @@ TwistMux::TwistMux(int window_size)
   lock_hs_     = boost::make_shared<lock_topic_container>();
   //Containers for the topics and locks
 
-  getTopicHandles(nh, nh_priv, "topics", *velocity_hs_);
-  getTopicHandles(nh, nh_priv, "locks" , *lock_hs_ );
+  getTopicHandles(nh, nh_priv);//, "topics", *velocity_hs_);
+  //getTopicHandles(nh, nh_priv, "locks" , *lock_hs_ );
   //Gets the topics and locks
 
   // Publisher for output topic:
-  getPublisher(nh, nh_priv, "publisher");
-  cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
-  cmd_pub_ = nh.advertise<geometry_msgs::TwistStamped>("cmd_vel_out", 1);
+  std::string pub_msg = getPublisher(nh, nh_priv, "publisher");
+
+  if(pub_msg == "twist") {
+    cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
+  }
+  else {
+    cmd_pub_ = nh.advertise<geometry_msgs::TwistStamped>("cmd_vel_out", 1);
+  }
 
   /// Diagnostics:
   diagnostics_ = boost::make_shared<diagnostics_type>();
@@ -94,17 +99,18 @@ void TwistMux::publishTwist(const geometry_msgs::TwistConstPtr& msg)
   cmd_pub_.publish(*msg);
 }
 
-void TwistMux::publishTwistStamped(const geometry_msgs::TwistConstPtr& msg)
+void TwistMux::publishTwistStamped(const geometry_msgs::TwistStampedConstPtr& msg)
 {
   cmd_pub_.publish(*msg);
 }
 
-template<typename T>
-void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name, std::list<T>& topic_hs)
+void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//, const std::string& param_name)//, velocity_topic_container& topic_hs)
 {
   try
   {
     xh::Array output;
+
+    std::string param_name = "topics";
     xh::fetchParam(nh_priv, param_name, output);
 
     xh::Struct output_i;
@@ -113,7 +119,7 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, co
     int msg_type;
     int priority;
 
-    if(param_name=="topics") {
+    //if(param_name=="topics") {
       for (int i = 0; i < output.size(); i++)
       {
         xh::getArrayItem(output, i, output_i);
@@ -130,19 +136,35 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, co
           //create a VelocityTopicStampHandle
           //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicStampHandle
 
-          VelocityTopicStampHandle twistStamped(nh, name, topic, timeout, priority, this, msg_type);
-          topic_hs.push_back(twistStamped);
+          boost::shared_ptr<VelocityTopicStampHandle> twistStamped = boost::make_shared<VelocityTopicStampHandle>(nh, name, topic, timeout, priority, this, msg_type);
+          velocity_hs_->push_back(twistStamped);
         }
         else {
           //create a VelocityTopicHandle
           //topic_hs.push_back the element to not construct the element again while having an element of VelocityTopicHandle
 
-          VelocityTopicHandle twist(nh, name, topic, timeout, priority, this, msg_type);
-          topic_hs.push_back(twist);
+          boost::shared_ptr<VelocityTopicHandle> twist = boost::make_shared<VelocityTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
+          velocity_hs_->push_back(twist);
         }
       }
     }
-    else {
+    catch (const xh::XmlrpcHelperException& e)
+    {
+      ROS_FATAL_STREAM("Error parsing topics params: " << e.what());
+    }
+
+    try {
+      xh::Array output;
+
+      xh::Struct output_i;
+      std::string name, topic;
+      double timeout;
+      int msg_type;
+      int priority;
+
+      std::string param_name = "locks";
+      xh::fetchParam(nh_priv, param_name, output);
+
       for (int i = 0; i < output.size(); i++)
       {
         xh::getArrayItem(output, i, output_i);
@@ -153,15 +175,15 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, co
         xh::getStructMember(output_i, "priority", priority);
         //reads the data from the yaml file to get the topics
         //problem without having a msg_type labeled in the yaml
-
-        topic_hs.emplace_back(nh, name, topic, timeout, priority, this);
+        boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
+        lock_hs_->push_back(lock);
         // adds the topics onto the vector or list
       }
-    }
+    //}
   }
   catch (const xh::XmlrpcHelperException& e)
   {
-    ROS_FATAL_STREAM("Error parsing params: " << e.what());
+    ROS_FATAL_STREAM("Error parsing locks params: " << e.what());
   }
 }
 
@@ -185,9 +207,9 @@ int TwistMux::getLockPriority()
   /// that is locked:
   for (const auto& lock_h : *lock_hs_)
   {
-    if (lock_h.isLocked())
+    if (lock_h->isLocked())
     {
-      auto tmp = lock_h.getPriority();
+      auto tmp = lock_h->getPriority();
       if (priority < tmp)
       {
         priority = tmp;
@@ -211,13 +233,13 @@ bool TwistMux::hasPriority(const TopicsHandleBase& twist)
   /// that is NOT masked by the lock priority:
   for (const auto& velocity_h : *velocity_hs_)
   {
-    if (not velocity_h.isMasked(lock_priority))
+    if (not velocity_h->isMasked(lock_priority))
     {
-      const auto velocity_priority = velocity_h.getPriority();
+      const auto velocity_priority = velocity_h->getPriority();
       if (priority < velocity_priority)
       {
         priority = velocity_priority;
-        velocity_name = velocity_h.getName();
+        velocity_name = velocity_h->getName();
       }
     }
   }

@@ -61,8 +61,8 @@ public:
   // typedef std::list<TopicsHandleBase>         velocity_topic_container;
   // typedef std::list<LockTopicHandle>          lock_topic_container;
 
-  typedef std::list<TopicsHandleBase>         velocity_topic_container;
-  typedef std::list<LockTopicHandle>          lock_topic_container;
+  typedef std::list<boost::shared_ptr<TopicsHandleBase> >   velocity_topic_container;
+  typedef std::list<boost::shared_ptr<LockTopicHandle>  >   lock_topic_container;
 
   TwistMux(int window_size = 10);
   ~TwistMux();
@@ -75,14 +75,14 @@ public:
 
   void publishTwist(const geometry_msgs::TwistConstPtr& msg);
 
+  void publishTwistStamped(const geometry_msgs::TwistStampedConstPtr& msg);
+
   // void publishTwistStamped(const geometry_msgs::TwistConstPtr& msg);
 
   void updateDiagnostics(const ros::TimerEvent& event);
 
   void getPublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name);
 
-  // virtual void getTwist() = 0;
-  // virtual void getTime() = 0;
 
 protected:
 
@@ -100,13 +100,6 @@ protected:
    * must reserve the number of handles initially.
    */
   // @todo use handle_container (see above)
-  //handle_container<VelocityTopicHandle> velocity_hs_;
-
-  // handle_container<TopicsHandleBase> velocity_hs_;
-  // handle_container<LockTopicHandle> lock_hs_;
-
-  // velocity_topic_container velocity_hs_;
-  // lock_topic_container lock_hs_;
 
   boost::shared_ptr<velocity_topic_container> velocity_hs_;
   boost::shared_ptr<lock_topic_container>     lock_hs_;
@@ -116,8 +109,8 @@ protected:
   geometry_msgs::Twist last_cmd_;
   geometry_msgs::TwistStamped last_stamp_cmd_;
 
-  template<typename T>
-  void getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name, std::list<T>& topic_hs);
+  //template<typename T>
+  void getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);//, const std::string& param_name, std::list<T>& topic_hs);
 
   int getLockPriority();
 
