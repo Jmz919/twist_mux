@@ -44,36 +44,6 @@ namespace twist_mux
 
       typedef int priority_type;
 
-      /**
-       * @brief TopicHandle_
-       * @param nh Node handle
-       * @param name Name identifier
-       * @param topic Topic name
-       * @param timeout Timeout to consider that the messages are old; note
-       * that initially the message stamp is set to 0.0, so the message has
-       * expired
-       * @param priority Priority of the topic
-       */
-      // TopicsHandleBase(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type)
-      //   : nh_(nh)
-      //   , name_(name)
-      //   , topic_(topic)
-      //   , timeout_(timeout)
-      //   , priority_(clamp(priority, priority_type(0), priority_type(255)))
-      //   , mux_(mux)
-      //   , msg_type_(msg_type)
-      //   , stamp_(0.0)
-      //
-      //   {
-      //     ROS_INFO_STREAM
-      //     (
-      //       "Topic handler '" << name_ << "' subscribed to topic '" << topic_ <<
-      //       "': timeout = " << ((timeout_) ? std::to_string(timeout_) + "s" : "None") <<
-      //       ", priority = " << static_cast<int>(priority_) << "msg_type = " << static_cast<int>(msg_type_)
-      //       //if successful reports that the node subscribe to the topic
-      //     );
-      //   }
-
         virtual geometry_msgs::Twist getTwist() = 0;
         virtual ros::Time& getTime() = 0;
         virtual bool isMasked(priority_type lock_priority) const = 0;
@@ -83,41 +53,17 @@ namespace twist_mux
           subscriber_.shutdown();
         }
 
-        bool hasExpired() const
-        {
-          return (timeout_ > 0.0) and
-                 ((ros::Time::now() - stamp_).toSec() > timeout_);
-        }
+        virtual bool hasExpired() const = 0;
 
-        const std::string& getName() const
-        {
-          return name_;
-        }
+        virtual const std::string& getName() const = 0;
 
-        const std::string& getTopic() const
-        {
-          return topic_;
-        }
+        virtual const std::string& getTopic() const = 0;
 
-        const double& getTimeout() const
-        {
-          return timeout_;
-        }
+        virtual const double& getTimeout() const = 0;
 
-        const int& getMsgType() const
-        {
-          return msg_type_;
-        }
+        virtual const int& getMsgType() const = 0;
 
-
-        /**
-         * @brief getPriority Priority getter
-         * @return Priority
-         */
-        const priority_type& getPriority() const
-        {
-          return priority_;
-        }
+        virtual const priority_type& getPriority() const = 0;
 
       protected:
         ros::NodeHandle nh_;
@@ -137,7 +83,6 @@ namespace twist_mux
     class LockTopicHandle {
       public:
         typedef int priority_type;
-        // typedef typename base_type::priority_type priority_type;
         LockTopicHandle(ros::NodeHandle& nh, const std::string& name, const std::string& topic, double timeout, priority_type priority, TwistMux* mux, int msg_type=0)
           : nh_(nh)
           , name_(name)
@@ -270,7 +215,7 @@ public:
     (
       "Topic handler '" << name_ << "' subscribed to topic '" << topic_ <<
       "': timeout = " << ((timeout_) ? std::to_string(timeout_) + "s" : "None") <<
-      ", priority = " << static_cast<int>(priority_) << "msg_type = " << static_cast<int>(msg_type_)
+      ", priority = " << static_cast<int>(priority_) << " msg_type = " << static_cast<int>(msg_type_)
       //if successful reports that the node subscribe to the topic
     );
   }
@@ -329,11 +274,6 @@ public:
     return stamp_;
   }
 
-  // const T& getMessage() const
-  // {
-  //   return msg_;
-  // }
-
 protected:
   ros::NodeHandle nh_;
 
@@ -380,6 +320,7 @@ public:
 
   void callback(const geometry_msgs::TwistConstPtr& msg)
   {
+
     stamp_ = ros::Time::now();
     twist_ = *msg;
 
@@ -435,6 +376,7 @@ public:
   }
   void callback(const geometry_msgs::TwistStampedConstPtr& msg)
   {
+
     ts     = *msg;
     twist_ = ts.twist;
     stamp_ = ts.header.stamp;
@@ -445,7 +387,7 @@ public:
     // all the topic list; so far there's no O(1) solution.
 
     //check the publisher type and to determine how to publish
-    
+
     if (mux_->hasPriority(*this))
     {
       mux_->publishTwist(twist_);
@@ -455,7 +397,6 @@ public:
     {
       mux_->publishTwistStamped(ts);
     }
-
   }
 };
 

@@ -90,16 +90,16 @@ void TwistMux::publishTwist(const geometry_msgs::Twist& msg)
 {
   if (cmd_pub_) {
     cmd_pub_.publish(msg);
+    ROS_INFO_STREAM("Publishing msgs");
   }
-  // cmd_pub_twist_.publish(msg);
 }
 
 void TwistMux::publishTwistStamped(const geometry_msgs::TwistStamped& msg)
 {
   if (cmd_pub_stamped_) {
     cmd_pub_stamped_.publish(msg);
+    ROS_INFO_STREAM("Publishing msgs");
   }
-  // cmd_pub_twist_stamped_.publish(msg);
 }
 
 void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//, const std::string& param_name)//, velocity_topic_container& topic_hs)
@@ -116,61 +116,63 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
     double timeout;
     int msg_type;
     int priority;
-    nh.param<int>("msg_type", msg_type, 0);
 
-    //if(param_name=="topics") {
-      for (int i = 0; i < output.size(); i++)
-      {
-        xh::getArrayItem(output, i, output_i);
-
-        xh::getStructMember(output_i, "name"    , name    );
-        xh::getStructMember(output_i, "topic"   , topic   );
-        xh::getStructMember(output_i, "timeout" , timeout );
-        xh::getStructMember(output_i, "priority", priority);
-        if(msg_type) {
-          xh::getStructMember(output_i, "msg_type", msg_type);
-        }
-        else {
-          msg_type = 0;
-        }
-
-        if(msg_type == 1) {
-          boost::shared_ptr<VelocityTopicStampHandle> twistStamped = boost::make_shared<VelocityTopicStampHandle>(nh, name, topic, timeout, priority, this, msg_type);
-          velocity_hs_->push_back(twistStamped);
-        }
-        else {
-          boost::shared_ptr<VelocityTopicHandle> twist = boost::make_shared<VelocityTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
-          velocity_hs_->push_back(twist);
-        }
-      }
-    }
-    catch (const xh::XmlrpcHelperException& e)
+    for (int i = 0; i < output.size(); i++)
     {
-      ROS_FATAL_STREAM("Error parsing topics params: " << e.what());
-    }
+      xh::getArrayItem(output, i, output_i);
 
-    try {
-      xh::Array output;
-      xh::Struct output_i;
-      std::string name, topic;
-      double timeout;
-      int priority;
+      // These are required parameters
+      xh::getStructMember(output_i, "name"    , name    );
+      xh::getStructMember(output_i, "topic"   , topic   );
+      xh::getStructMember(output_i, "timeout" , timeout );
+      xh::getStructMember(output_i, "priority", priority);
 
-      std::string param_name = "locks";
-      xh::fetchParam(nh_priv, param_name, output);
-
-      for (int i = 0; i < output.size(); i++)
-      {
-        xh::getArrayItem(output, i, output_i);
-
-        xh::getStructMember(output_i, "name"    , name    );
-        xh::getStructMember(output_i, "topic"   , topic   );
-        xh::getStructMember(output_i, "timeout" , timeout );
-        xh::getStructMember(output_i, "priority", priority);
-
-        boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
-        lock_hs_->push_back(lock);
+      try {
+        // Optional parameter for backwards compatibility
+        xh::getStructMember(output_i, "msg_type", msg_type);
       }
+      catch (const xh::XmlrpcHelperException& e) {
+        ROS_INFO_STREAM("No msg_type for "+topic);
+        msg_type = 0;
+      }
+
+      if(msg_type == 1) {
+        boost::shared_ptr<VelocityTopicStampHandle> twistStamped = boost::make_shared<VelocityTopicStampHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        velocity_hs_->push_back(twistStamped);
+      }
+      else {
+        boost::shared_ptr<VelocityTopicHandle> twist = boost::make_shared<VelocityTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        velocity_hs_->push_back(twist);
+      }
+    }
+  }
+  catch (const xh::XmlrpcHelperException& e)
+  {
+    ROS_FATAL_STREAM("Error parsing topics params: " << e.what());
+  }
+
+  try {
+    xh::Array output;
+    xh::Struct output_i;
+    std::string name, topic;
+    double timeout;
+    int priority;
+
+    std::string param_name = "locks";
+    xh::fetchParam(nh_priv, param_name, output);
+
+    for (int i = 0; i < output.size(); i++)
+    {
+      xh::getArrayItem(output, i, output_i);
+
+      xh::getStructMember(output_i, "name"    , name    );
+      xh::getStructMember(output_i, "topic"   , topic   );
+      xh::getStructMember(output_i, "timeout" , timeout );
+      xh::getStructMember(output_i, "priority", priority);
+
+      boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
+      lock_hs_->push_back(lock);
+    }
   }
   catch (const xh::XmlrpcHelperException& e)
   {
@@ -250,6 +252,7 @@ bool TwistMux::hasPriority(const TopicsHandleBase& twist)
 
   /// max_element on the priority of velocity topic handles satisfying
   /// that is NOT masked by the lock priority:
+
   for (const auto& velocity_h : *velocity_hs_)
   {
     if (not velocity_h->isMasked(lock_priority))
@@ -263,6 +266,8 @@ bool TwistMux::hasPriority(const TopicsHandleBase& twist)
     }
   }
 
+
   return twist.getName() == velocity_name;
+
 }
 } // namespace twist_mux

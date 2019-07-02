@@ -57,9 +57,6 @@ public:
   //template<typename T>
   //using handle_container = std::list<T>;
   // @todo alternatively we do the following:
-  // typedef std::list<VelocityTopicHandle>      velocity_topic_container;
-  // typedef std::list<TopicsHandleBase>         velocity_topic_container;
-  // typedef std::list<LockTopicHandle>          lock_topic_container;
 
   typedef std::list<boost::shared_ptr<TopicsHandleBase> >   velocity_topic_container;
   typedef std::list<boost::shared_ptr<LockTopicHandle>  >   lock_topic_container;
@@ -69,15 +66,9 @@ public:
 
   bool hasPriority(const TopicsHandleBase& twist);
 
-  // bool hasPriority(const VelocityTopicHandle& twist);
-
-  // bool hasPriorityStamp(const VelocityTopicStampHandle& twist);
-
   void publishTwist(const geometry_msgs::Twist& msg);
 
   void publishTwistStamped(const geometry_msgs::TwistStamped& msg);
-
-  // void publishTwistStamped(const geometry_msgs::TwistConstPtr& msg);
 
   void updateDiagnostics(const ros::TimerEvent& event);
 
@@ -112,8 +103,7 @@ protected:
   geometry_msgs::Twist last_cmd_;
   geometry_msgs::TwistStamped last_stamp_cmd_;
 
-  //template<typename T>
-  void getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);//, const std::string& param_name, std::list<T>& topic_hs);
+  void getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
 
   int getLockPriority();
 
