@@ -66,9 +66,19 @@ public:
 
   bool hasPriority(const TopicsHandleBase& twist);
 
-  void publishTwist(const geometry_msgs::Twist& msg);
+  inline void publishTwist(const geometry_msgs::Twist& msg)
+  {
+    if (cmd_pub_) {
+      cmd_pub_.publish(msg);
+    }
+  }
 
-  void publishTwistStamped(const geometry_msgs::TwistStamped& msg);
+  inline void publishTwistStamped(const geometry_msgs::TwistStamped& msg)
+  {
+    if (cmd_pub_stamped_) {
+      cmd_pub_stamped_.publish(msg);
+    }
+  }
 
   void updateDiagnostics(const ros::TimerEvent& event);
 

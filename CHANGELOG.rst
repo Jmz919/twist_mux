@@ -2,6 +2,11 @@
 Changelog for package twist_mux
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+3.2.0 (2019-07-03)
+------------------
+* Allow input of TwistStamped types
+* Publisher Twist and/or TwistStamped outputs 
+
 3.1.0 (2018-06-25)
 ------------------
 

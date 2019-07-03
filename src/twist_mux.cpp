@@ -17,6 +17,7 @@
 /*
  * @author Enrique Fernandez
  * @author Siegfried Gevatter
+ * @author Joshua Zutell
  */
 
 #include <ros/ros.h>
@@ -86,22 +87,6 @@ void TwistMux::updateDiagnostics(const ros::TimerEvent& event)
   diagnostics_->updateStatus(status_);
 }
 
-void TwistMux::publishTwist(const geometry_msgs::Twist& msg)
-{
-  if (cmd_pub_) {
-    cmd_pub_.publish(msg);
-    ROS_INFO_STREAM("Publishing msgs");
-  }
-}
-
-void TwistMux::publishTwistStamped(const geometry_msgs::TwistStamped& msg)
-{
-  if (cmd_pub_stamped_) {
-    cmd_pub_stamped_.publish(msg);
-    ROS_INFO_STREAM("Publishing msgs");
-  }
-}
-
 void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//, const std::string& param_name)//, velocity_topic_container& topic_hs)
 {
   try
@@ -137,11 +122,11 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
       }
 
       if(msg_type == 1) {
-        boost::shared_ptr<VelocityTopicStampHandle> twistStamped = boost::make_shared<VelocityTopicStampHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        boost::shared_ptr<TwistStampedTopicHandle> twistStamped = boost::make_shared<TwistStampedTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
         velocity_hs_->push_back(twistStamped);
       }
       else {
-        boost::shared_ptr<VelocityTopicHandle> twist = boost::make_shared<VelocityTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        boost::shared_ptr<TwistTopicHandle> twist = boost::make_shared<TwistTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
         velocity_hs_->push_back(twist);
       }
     }
@@ -173,11 +158,11 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//,
       boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
       lock_hs_->push_back(lock);
     }
-  }
-  catch (const xh::XmlrpcHelperException& e)
-  {
-    ROS_FATAL_STREAM("Error parsing locks params: " << e.what());
-  }
+    }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+      ROS_FATAL_STREAM("Error parsing locks params: " << e.what());
+    }
 }
 
 void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
@@ -191,32 +176,70 @@ void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
     std::string param_name = "publishers";
 
     xh::fetchParam(nh_priv, param_name, output);
-
-    for (int i = 0; i < 2; i++)
-    {
-      xh::getArrayItem(output, i, output_i);
-
-      xh::getStructMember(output_i, "topic", topic);
-      xh::getStructMember(output_i, "msg_type", msg_type);
-
-      if(topic.length() != 0) {
-        if(msg_type == 1) {
-          cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
-        }
-        else {
+    try {
+        xh::getArrayItem(output, 0, output_i);
+        xh::getStructMember(output_i, "twist_topic", topic);
+        if (topic.length() > 0)
+        {
           cmd_pub_ = nh.advertise<geometry_msgs::Twist>(topic, 1);
         }
-      }
+        else
+        {
+          ROS_INFO_STREAM("Skipping Twist publishing for empty topic ");
+
+        }
     }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+        ROS_WARN_STREAM("Error parsing publishers defaulting to Twist: " << e.what());
+        cmd_pub_ = nh.advertise<geometry_msgs::Twist>("twist_mux_out", 1);
+    }
+
+
+    try {
+        xh::getArrayItem(output, 0, output_i);
+        xh::getStructMember(output_i, "twist_stamped_topic", topic);
+        if (topic.length() > 0)
+        {
+            cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
+        }
+        else
+        {
+          ROS_INFO_STREAM("Skipping TwistStamped publishing for empty topic ");
+
+        }
+    }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+        ROS_WARN_STREAM("Error parsing publishers defaulting to TwistStamped: " << e.what());
+        cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twist_stamped_mux_out", 1);
+    }
+
+    //
+    // for (int i = 0; i < 2; i++)
+    // {
+    //   xh::getArrayItem(output, i, output_i);
+    //
+    //   xh::getStructMember(output_i, "topic", topic);
+    //   xh::getStructMember(output_i, "msg_type", msg_type);
+    //
+    //   if(topic.length() != 0) {
+    //     if(msg_type == 1) {
+    //       cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
+    //     }
+    //     else {
+    //       cmd_pub_ = nh.advertise<geometry_msgs::Twist>(topic, 1);
+    //     }
+    //   }
+    // }
   }
   catch (const xh::XmlrpcHelperException& e)
   {
-    cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
-    // cmd_pub_twist_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twistStamped", 1);
-    //In case there is a problem parsing or old file
-    //There are default publishers
-
-    ROS_WARN_STREAM("Error parsing publishers defaulting to Twist: " << e.what());
+      ROS_WARN_STREAM("Error parsing publishers defaulting to Twist and TwistStamped: " << e.what());
+      cmd_pub_ = nh.advertise<geometry_msgs::Twist>("twist_mux_out", 1);
+      cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twist_stamped_mux_out", 1);
+      //In case there is a problem parsing or old file
+      //There are default publishers
   }
 }
 

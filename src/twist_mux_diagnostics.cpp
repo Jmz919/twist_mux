@@ -16,6 +16,7 @@
 
 /*
  * @author Enrique Fernandez
+ * @author Joshua Zutell
  */
 
 #include <twist_mux/twist_mux_diagnostics.h>
