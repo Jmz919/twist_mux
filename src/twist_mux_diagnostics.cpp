@@ -16,6 +16,7 @@
 
 /*
  * @author Enrique Fernandez
+ * @author Joshua Zutell
  */
 
 #include <twist_mux/twist_mux_diagnostics.h>
@@ -66,22 +67,22 @@ void TwistMuxDiagnostics::diagnostics(diagnostic_updater::DiagnosticStatusWrappe
 
   for (const auto& velocity_h : *status_.velocity_hs)
   {
-    stat.addf("velocity " + velocity_h.getName(),
+    stat.addf("velocity " + velocity_h->getName(),
               " %s (listening to %s @ %fs with priority #%d)",
-              (velocity_h.isMasked(status_.priority) ? "masked" : "unmasked"),
-              velocity_h.getTopic().c_str(),
-              velocity_h.getTimeout(),
-              static_cast<int>(velocity_h.getPriority()));
+              (velocity_h->isMasked(status_.priority) ? "masked" : "unmasked"),
+              velocity_h->getTopic().c_str(),
+              velocity_h->getTimeout(),
+              static_cast<int>(velocity_h->getPriority()));
   }
 
   for (const auto& lock_h : *status_.lock_hs)
   {
-    stat.addf("lock " + lock_h.getName(),
+    stat.addf("lock " + lock_h->getName(),
               " %s (listening to %s @ %fs with priority #%d)",
-              (lock_h.isLocked() ? "locked" : "free"),
-              lock_h.getTopic().c_str(),
-              lock_h.getTimeout(),
-              static_cast<int>(lock_h.getPriority()));
+              (lock_h->isLocked() ? "locked" : "free"),
+              lock_h->getTopic().c_str(),
+              lock_h->getTimeout(),
+              static_cast<int>(lock_h->getPriority()));
   }
 
   stat.add("current priority", static_cast<int>(status_.priority));

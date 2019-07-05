@@ -17,6 +17,7 @@
 /*
  * @author Enrique Fernandez
  * @author Siegfried Gevatter
+ * @author Joshua Zutell
  */
 
 #include <ros/ros.h>
@@ -36,4 +37,3 @@ main(int argc, char *argv[])
 
   return EXIT_SUCCESS;
 }
-

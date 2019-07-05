@@ -17,7 +17,13 @@
 /*
  * @author Enrique Fernandez
  * @author Siegfried Gevatter
+ * @author Joshua Zutell
  */
+
+#include <ros/ros.h>
+#include <fstream>
+#include <pluginlib/class_list_macros.h>
+#include <std_msgs/String.h>
 
 #include <twist_mux/twist_mux.h>
 #include <twist_mux/topic_handle.h>
@@ -53,14 +59,15 @@ TwistMux::TwistMux(int window_size)
   ros::NodeHandle nh;
   ros::NodeHandle nh_priv("~");
 
-  /// Get topics and locks:
+  //Containers for the topics and locks
   velocity_hs_ = boost::make_shared<velocity_topic_container>();
   lock_hs_     = boost::make_shared<lock_topic_container>();
-  getTopicHandles(nh, nh_priv, "topics", *velocity_hs_);
-  getTopicHandles(nh, nh_priv, "locks" , *lock_hs_ );
 
-  /// Publisher for output topic:
-  cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel_out", 1);
+  //Gets the topics and locks
+  getTopicHandles(nh, nh_priv);
+
+  //Gets the Publishers for output topics:
+  getPublishers(nh, nh_priv);
 
   /// Diagnostics:
   diagnostics_ = boost::make_shared<diagnostics_type>();
@@ -80,24 +87,66 @@ void TwistMux::updateDiagnostics(const ros::TimerEvent& event)
   diagnostics_->updateStatus(status_);
 }
 
-void TwistMux::publishTwist(const geometry_msgs::TwistConstPtr& msg)
-{
-  cmd_pub_.publish(*msg);
-}
-
-template<typename T>
-void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, const std::string& param_name, std::list<T>& topic_hs)
+void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)//, const std::string& param_name)//, velocity_topic_container& topic_hs)
 {
   try
   {
     xh::Array output;
+
+    std::string param_name = "topics";
     xh::fetchParam(nh_priv, param_name, output);
 
     xh::Struct output_i;
     std::string name, topic;
     double timeout;
+    int msg_type;
     int priority;
-    for (int i = 0; i < output.size(); ++i)
+
+    for (int i = 0; i < output.size(); i++)
+    {
+      xh::getArrayItem(output, i, output_i);
+
+      // These are required parameters
+      xh::getStructMember(output_i, "name"    , name    );
+      xh::getStructMember(output_i, "topic"   , topic   );
+      xh::getStructMember(output_i, "timeout" , timeout );
+      xh::getStructMember(output_i, "priority", priority);
+
+      try {
+        // Optional parameter for backwards compatibility
+        xh::getStructMember(output_i, "msg_type", msg_type);
+      }
+      catch (const xh::XmlrpcHelperException& e) {
+        ROS_INFO_STREAM("No msg_type for "+topic);
+        msg_type = 0;
+      }
+
+      if(msg_type == 1) {
+        boost::shared_ptr<TwistStampedTopicHandle> twistStamped = boost::make_shared<TwistStampedTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        velocity_hs_->push_back(twistStamped);
+      }
+      else {
+        boost::shared_ptr<TwistTopicHandle> twist = boost::make_shared<TwistTopicHandle>(nh, name, topic, timeout, priority, this, msg_type);
+        velocity_hs_->push_back(twist);
+      }
+    }
+  }
+  catch (const xh::XmlrpcHelperException& e)
+  {
+    ROS_FATAL_STREAM("Error parsing topics params: " << e.what());
+  }
+
+  try {
+    xh::Array output;
+    xh::Struct output_i;
+    std::string name, topic;
+    double timeout;
+    int priority;
+
+    std::string param_name = "locks";
+    xh::fetchParam(nh_priv, param_name, output);
+
+    for (int i = 0; i < output.size(); i++)
     {
       xh::getArrayItem(output, i, output_i);
 
@@ -106,12 +155,71 @@ void TwistMux::getTopicHandles(ros::NodeHandle& nh, ros::NodeHandle& nh_priv, co
       xh::getStructMember(output_i, "timeout" , timeout );
       xh::getStructMember(output_i, "priority", priority);
 
-      topic_hs.emplace_back(nh, name, topic, timeout, priority, this);
+      boost::shared_ptr<LockTopicHandle> lock = boost::make_shared<LockTopicHandle>(nh, name, topic, timeout, priority, this);
+      lock_hs_->push_back(lock);
+    }
+    }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+      ROS_FATAL_STREAM("Error parsing locks params: " << e.what());
+    }
+}
+
+void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
+{
+  try
+  {
+    xh::Array output;
+    xh::Struct output_i;
+    std::string topic;
+    int msg_type;
+    std::string param_name = "publishers";
+
+    xh::fetchParam(nh_priv, param_name, output);
+    try {
+        xh::getArrayItem(output, 0, output_i);
+        xh::getStructMember(output_i, "twist_topic", topic);
+        if (topic.length() > 0)
+        {
+          cmd_pub_ = nh.advertise<geometry_msgs::Twist>(topic, 1);
+        }
+        else
+        {
+          ROS_INFO_STREAM("Skipping Twist publishing for empty topic ");
+        }
+    }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+        ROS_WARN_STREAM("Error parsing publishers defaulting to Twist: " << e.what());
+        cmd_pub_ = nh.advertise<geometry_msgs::Twist>("twist_mux_out", 1);
+    }
+
+    try {
+        xh::getArrayItem(output, 1, output_i);
+        xh::getStructMember(output_i, "twist_stamped_topic", topic);
+        if (topic.length() > 0)
+        {
+            cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
+        }
+        else
+        {
+          ROS_INFO_STREAM("Skipping TwistStamped publishing for empty topic ");
+
+        }
+    }
+    catch (const xh::XmlrpcHelperException& e)
+    {
+        ROS_WARN_STREAM("Error parsing publishers defaulting to TwistStamped: " << e.what());
+        cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twist_stamped_mux_out", 1);
     }
   }
   catch (const xh::XmlrpcHelperException& e)
   {
-    ROS_FATAL_STREAM("Error parsing params: " << e.what());
+      ROS_WARN_STREAM("Error parsing publishers defaulting to Twist and TwistStamped: " << e.what());
+      cmd_pub_ = nh.advertise<geometry_msgs::Twist>("twist_mux_out", 1);
+      cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twist_stamped_mux_out", 1);
+      //In case there is a problem parsing or old file
+      //There are default publishers
   }
 }
 
@@ -123,9 +231,9 @@ int TwistMux::getLockPriority()
   /// that is locked:
   for (const auto& lock_h : *lock_hs_)
   {
-    if (lock_h.isLocked())
+    if (lock_h->isLocked())
     {
-      auto tmp = lock_h.getPriority();
+      auto tmp = lock_h->getPriority();
       if (priority < tmp)
       {
         priority = tmp;
@@ -138,7 +246,7 @@ int TwistMux::getLockPriority()
   return priority;
 }
 
-bool TwistMux::hasPriority(const VelocityTopicHandle& twist)
+bool TwistMux::hasPriority(const TopicsHandleBase& twist)
 {
   const auto lock_priority = getLockPriority();
 
@@ -147,20 +255,21 @@ bool TwistMux::hasPriority(const VelocityTopicHandle& twist)
 
   /// max_element on the priority of velocity topic handles satisfying
   /// that is NOT masked by the lock priority:
+
   for (const auto& velocity_h : *velocity_hs_)
   {
-    if (not velocity_h.isMasked(lock_priority))
+    if (not velocity_h->isMasked(lock_priority))
     {
-      const auto velocity_priority = velocity_h.getPriority();
+      const auto velocity_priority = velocity_h->getPriority();
       if (priority < velocity_priority)
       {
         priority = velocity_priority;
-        velocity_name = velocity_h.getName();
+        velocity_name = velocity_h->getName();
       }
     }
   }
 
+
   return twist.getName() == velocity_name;
 }
-
 } // namespace twist_mux
