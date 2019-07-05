@@ -271,6 +271,5 @@ bool TwistMux::hasPriority(const TopicsHandleBase& twist)
 
 
   return twist.getName() == velocity_name;
-
 }
 } // namespace twist_mux
