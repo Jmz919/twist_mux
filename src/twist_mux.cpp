@@ -186,7 +186,6 @@ void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
         else
         {
           ROS_INFO_STREAM("Skipping Twist publishing for empty topic ");
-
         }
     }
     catch (const xh::XmlrpcHelperException& e)
@@ -195,9 +194,8 @@ void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
         cmd_pub_ = nh.advertise<geometry_msgs::Twist>("twist_mux_out", 1);
     }
 
-
     try {
-        xh::getArrayItem(output, 0, output_i);
+        xh::getArrayItem(output, 1, output_i);
         xh::getStructMember(output_i, "twist_stamped_topic", topic);
         if (topic.length() > 0)
         {
@@ -214,24 +212,6 @@ void TwistMux::getPublishers(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
         ROS_WARN_STREAM("Error parsing publishers defaulting to TwistStamped: " << e.what());
         cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>("twist_stamped_mux_out", 1);
     }
-
-    //
-    // for (int i = 0; i < 2; i++)
-    // {
-    //   xh::getArrayItem(output, i, output_i);
-    //
-    //   xh::getStructMember(output_i, "topic", topic);
-    //   xh::getStructMember(output_i, "msg_type", msg_type);
-    //
-    //   if(topic.length() != 0) {
-    //     if(msg_type == 1) {
-    //       cmd_pub_stamped_ = nh.advertise<geometry_msgs::TwistStamped>(topic, 1);
-    //     }
-    //     else {
-    //       cmd_pub_ = nh.advertise<geometry_msgs::Twist>(topic, 1);
-    //     }
-    //   }
-    // }
   }
   catch (const xh::XmlrpcHelperException& e)
   {
