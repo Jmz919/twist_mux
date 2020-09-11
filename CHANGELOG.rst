@@ -2,10 +2,17 @@
 Changelog for package twist_mux
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+<<<<<<< HEAD
 3.2.0 (2019-07-03)
 ------------------
 * Allow input of TwistStamped types
 * Publisher Twist and/or TwistStamped outputs 
+=======
+3.1.1 (2020-06-02)
+------------------
+* Bump CMake version to avoid CMP0048
+* Contributors: Bence Magyar
+>>>>>>> a2818fda98d68c80ec300f962013c98252c769e2
 
 3.1.0 (2018-06-25)
 ------------------
